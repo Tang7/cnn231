@@ -257,7 +257,7 @@ class CaptioningRNN(object):
         for t in range(max_length):  # Let's go over the sequence
 
             word_embed, _ = word_embedding_forward(
-                capt, W_embed)  # Embedded current word
+                current_word, W_embed)  # Embedded current word
             if self.cell_type == 'rnn':
                 # Run a step of rnn
                 h, _ = rnn_step_forward(np.squeeze(
