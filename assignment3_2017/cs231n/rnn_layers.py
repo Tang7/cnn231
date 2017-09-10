@@ -263,7 +263,22 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     # TODO: Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    H = prev_h.shape[1]
+    a = x.dot(Wx) + prev_h.dot(Wh) + b # N x 4H
+    # a_input = a[:, :H]
+    # a_forget = a[:, H:2*H]
+    # a_output = a[:, 2*H:3*H]
+    # a_block = a[:, 3*H:4*H]
+
+    input_gate = sigmoid(a[:, :H])
+    forget_gate = sigmoid(a[:, H:2*H])
+    output_gate = sigmoid(a[:, 2*H:3*H])
+    block_gate = np.tanh(a[:, 3*H:4*H])
+
+    next_c = forget_gate * prev_c + input_gate * block_gate
+    next_h = output_gate * np.tanh(next_c)
+
+    cache = x, prev_h, prev_c, next_h, next_c, Wx, Wh, b, input_gate, forget_gate, output_gate, block_gate
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -295,7 +310,32 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+    x, prev_h, prev_c, next_h, next_c, Wx, Wh, b, input_gate, forget_gate, output_gate, block_gate = cache
+
+
+    H = prev_c.shape[1]
+    da = np.zeros((x.shape[0], 4*H))
+
+    doutput_gate = dnext_h * np.tanh(next_c)
+    dnext_c += dnext_h * output_gate * (1 - np.tanh(next_c) ** 2)
+    dforget_gate = dnext_c * prev_c
+    dprev_c = dnext_c * forget_gate
+    dinput_gate = dnext_c * block_gate
+    dblock_gate = dnext_c * input_gate
+
+    da[:, :H]      = dinput_gate * (1 - input_gate) * input_gate
+    da[:, 1*H:2*H] = dforget_gate * (1 - forget_gate) * forget_gate
+    da[:, 2*H:3*H] = doutput_gate * (1 - output_gate) * output_gate
+    da[:, 3*H:4*H] = dblock_gate * ( 1 - block_gate ** 2)
+
+    dx = da.dot(Wx.T)
+    dWx = x.T.dot(da)
+
+    dprev_h = da.dot(Wh.T)
+    dWh = prev_h.T.dot(da)
+
+    db = da.sum(axis=0)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -330,7 +370,18 @@ def lstm_forward(x, h0, Wx, Wh, b):
     # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
     # You should use the lstm_step_forward function that you just defined.      #
     #############################################################################
-    pass
+    N, T, D = x.shape
+    H = h0.shape[1]
+
+    h = np.zeros((N, T, H))
+    cache = []
+    prev_h = h0
+    prev_c = np.zeros_like(h0)
+
+    for i in range(T):
+        prev_h, prev_c, cache_i = lstm_step_forward(x[:, i, :], prev_h, prev_c, Wx, Wh, b)
+        h[:, i, :] = prev_h
+        cache.append(cache_i)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -358,7 +409,23 @@ def lstm_backward(dh, cache):
     # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
     # You should use the lstm_step_backward function that you just defined.     #
     #############################################################################
-    pass
+    N, T, H = dh.shape
+    D = cache[0][0].shape[1]
+
+    dx      = np.zeros((N, T, D))
+    dprev_h = np.zeros((N, H))
+    dprev_c = np.zeros((N, H))
+    dWx     = np.zeros((D, 4*H))
+    dWh     = np.zeros((H, 4*H))
+    db      = np.zeros((4*H))
+    
+    for i in range(T-1, -1, -1):
+        dx[:, i, :], dprev_h, dprev_c, dWxi, dWhi, dbi = lstm_step_backward(dh[:, i, :] + dprev_h, dprev_c, cache[i])
+        dWx += dWxi
+        dWh += dWhi
+        db  += dbi
+
+    dh0 = dprev_h 
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
